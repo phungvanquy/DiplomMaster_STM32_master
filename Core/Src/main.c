@@ -64,43 +64,43 @@ UART_HandleTypeDef huart6;
 osThreadId_t CmdParsingHandle;
 const osThreadAttr_t CmdParsing_attributes = {
   .name = "CmdParsing",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for ToggleLed */
 osThreadId_t ToggleLedHandle;
 const osThreadAttr_t ToggleLed_attributes = {
   .name = "ToggleLed",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for ScanCard */
 osThreadId_t ScanCardHandle;
 const osThreadAttr_t ScanCard_attributes = {
   .name = "ScanCard",
   .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for SensorMeasuring */
 osThreadId_t SensorMeasuringHandle;
 const osThreadAttr_t SensorMeasuring_attributes = {
   .name = "SensorMeasuring",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for SendCardID */
 osThreadId_t SendCardIDHandle;
 const osThreadAttr_t SendCardID_attributes = {
   .name = "SendCardID",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for SendSensorData */
 osThreadId_t SendSensorDataHandle;
 const osThreadAttr_t SendSensorData_attributes = {
   .name = "SendSensorData",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for cardID_Queue */
 osMessageQueueId_t cardID_QueueHandle;
@@ -174,7 +174,11 @@ volatile char uartReceivedData[16];
 
 volatile uint8_t receivedDataFromServer[8]={0};
 
-volatile uint8_t sensorMeasuringIsEnable = 0;
+volatile uint8_t sensorMeasuringIsEnable = 1;
+
+
+
+volatile uint8_t cmdToSend[8]={0}; 		// this is used for send CMD to Slave
 
 //**** RTOS object ****
 osMutexId_t mutex_id;
@@ -220,6 +224,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   MFRC522_Init();
   HAL_UART_Transmit(&huart2, (uchar*) "\n\rSerial Connected...\n\r", 23, 5000);
+
 
   /* USER CODE END 2 */
 
@@ -399,7 +404,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -546,8 +551,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (huart == &huart6){
 		osEventFlagsSet(parsingCMDAvailableHandle, 0x00000001U);
+		HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedDataFromServer, 8);
 	}
-	HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedDataFromServer, 8);
+
+//	if(huart == &huart1){
+//		for(int i = 0; i<16; i++){
+//			uchar temp[3];
+//			sprintf((char*)temp, (const char*)"%02x ", (char)wareHouse_2.idOfScannedCard[i]);
+//			HAL_UART_Transmit(&huart2, temp, 3, HAL_MAX_DELAY);
+//		}
+//	}
 }
 
 
@@ -570,7 +583,10 @@ void sendDataToServer(volatile WareHouse_t* wareHouse, uint8_t typeOfData){
 	}
 
 	dataToSend[16] = typeOfData;
+
+
 	HAL_UART_Transmit(&huart6, dataToSend, 18, HAL_MAX_DELAY);
+
 }
 
 
@@ -589,20 +605,26 @@ void scanCardIdHandle(uint8_t wareHouseId){
 
 					// Send cardID to the cardID_Queue
 					osMessageQueuePut(cardID_QueueHandle, &wareHouse_1, 0U, osWaitForever);
+
 					return;
 				}
 		}
 		break;
 	case 2:
 		// Send Cmd to warehouse2 (stm32 slave) to update value of warehouse2
-		if(1){
-			uint8_t cmdToSend[8];
-			cmdToSend[0] = SCAN_CARDID;
-			HAL_UART_Transmit(&huart1, cmdToSend, 8, HAL_MAX_DELAY);
-			HAL_UART_Receive(&huart1, wareHouse_2.idOfScannedCard, 16, HAL_MAX_DELAY);
+		cmdToSend[0] = SCAN_CARDID;
 
-			osMessageQueuePut(cardID_QueueHandle, &wareHouse_2, 0U, osWaitForever);
+		HAL_UART_Transmit(&huart1, cmdToSend, 8, HAL_MAX_DELAY);
+		osDelay(10);
+		HAL_UART_Receive(&huart1, wareHouse_2.idOfScannedCard, 16, HAL_MAX_DELAY);
+
+		for(int i = 0; i<16; i++){
+			uchar temp[3];
+			sprintf((char*)temp, (const char*)"%02x ", (char)wareHouse_2.idOfScannedCard[i]);
+			HAL_UART_Transmit(&huart2, temp, 3, HAL_MAX_DELAY);
 		}
+
+		osMessageQueuePut(cardID_QueueHandle, &wareHouse_2, 0U, osWaitForever);
 		break;
 	default:
 		break;
@@ -622,6 +644,12 @@ void toggleLEDHanlde(uint8_t wareHouseId, uint8_t ledId, uint8_t state){
 			}
 
 			break;
+		case 2:
+			// Send cmd to warehouse2 to set state of led
+			cmdToSend[0] = TOGGLE_LED;
+			cmdToSend[1] =  ledId;
+			cmdToSend[2] =  state;
+			HAL_UART_Transmit(&huart1, cmdToSend, 8, 1000);
 		default:
 			break;
 		}
@@ -677,6 +705,7 @@ void CmdParsing_Task(void *argument)
 void ToggleLed_Task(void *argument)
 {
   /* USER CODE BEGIN ToggleLed_Task */
+
   /* Infinite loop */
   for(;;)
   {
@@ -703,15 +732,15 @@ void ScanCard_Task(void *argument)
 	osEventFlagsWait(scanCardAvailableHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
 
 	// Mutex protect for uart2 start
-	osMutexAcquire(mutex_uart2Handle, osWaitForever);
+//	osMutexAcquire(mutex_uart2Handle, osWaitForever);
 
 	// Scan card id in ware house (id = receivedDataFromServer[1]) and send data to queue to SendCardID_Task
 	scanCardIdHandle(receivedDataFromServer[1]);
 
 	// Mutex protect for uart2 end
-	osMutexRelease(mutex_uart2Handle);
+//	osMutexRelease(mutex_uart2Handle);
 
-    osDelay(1000);
+    osDelay(1);
   }
   /* USER CODE END ScanCard_Task */
 }
@@ -729,21 +758,30 @@ void SensorMeasuring_Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	if(sensorMeasuringIsEnable){
+	  if(sensorMeasuringIsEnable){
 		wareHouse_1.humidity = rand()%2 + 95;
 		wareHouse_1.temperature = rand()%3 + 22;
 		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_1, NULL, osWaitForever);
-		osDelay(1000);
+	  }
+
+	  osDelay(1000);
+
+	  if(sensorMeasuringIsEnable){
+		//Send Cmd to warehouse2 to get humidity and temperature
+		cmdToSend[0] = SENSOR_MEASURING;
+		HAL_UART_Transmit(&huart1, cmdToSend, 8, HAL_MAX_DELAY);
+
+		HAL_UART_Receive(&huart1, &wareHouse_2.humidity, 1, 500);
+		HAL_UART_Receive(&huart1, &wareHouse_2.temperature, 1, 500);
 
 
-		wareHouse_2.humidity = rand()%5 + 90;
-		wareHouse_2.temperature = rand()%10 + 22;
+//		wareHouse_2.humidity = rand()%5 + 90;
+//		wareHouse_2.temperature = rand()%10 + 22;
 		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_2, NULL, osWaitForever);
-		osDelay(1000);
-	}
+	  }
+	  osDelay(1000);
 
-	osDelay(1);
-    //	osEventFlagsSet(scanCardAvailableHandle, 0x00000001U);		// this is used to test scan
+
   }
   /* USER CODE END SensorMeasuring_Task */
 }
