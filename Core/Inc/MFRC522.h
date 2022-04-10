@@ -15,9 +15,9 @@
 /* PORT number that /CS pin assigned on */
 #define CS_PORT_NAME		GPIOB
 /* PIN number that  /CS pin assigned on */
-#define CS_PIN_NUM			15
-#define CS_PIN_NUM_2		14
-#define CS_PIN_NUM_3		13
+#define CS_PIN_NUM			15				// for warehouse 1 (main)
+#define CS_PIN_NUM_2		14				// for warehouse 2
+#define CS_PIN_NUM_3		13				// for warehouse 3
 
 #define cs_set(readerId) CS_PORT_NAME->ODR |= 1<<((readerId) == 1? CS_PIN_NUM : (readerId) == 2? CS_PIN_NUM_2: CS_PIN_NUM_3)
 #define cs_clr(readerId) CS_PORT_NAME->ODR &= ~(1<<((readerId) == 1? CS_PIN_NUM : (readerId) == 2? CS_PIN_NUM_2: CS_PIN_NUM_3))

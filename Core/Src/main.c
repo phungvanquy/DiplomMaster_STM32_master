@@ -44,6 +44,7 @@
 // type of command received from server
 #define SCAN_CARDID 1
 #define TOGGLE_LED  2
+#define SENSOR_MEASURING 3
 
 /* USER CODE END PD */
 
@@ -55,6 +56,7 @@
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi3;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 
@@ -140,6 +142,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_USART6_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 void CmdParsing_Task(void *argument);
 void ToggleLed_Task(void *argument);
 void ScanCard_Task(void *argument);
@@ -170,6 +173,8 @@ volatile WareHouse_t wareHouse_1, wareHouse_2, wareHouse_3;
 volatile char uartReceivedData[16];
 
 volatile uint8_t receivedDataFromServer[8]={0};
+
+volatile uint8_t sensorMeasuringIsEnable = 0;
 
 //**** RTOS object ****
 osMutexId_t mutex_id;
@@ -211,6 +216,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_SPI3_Init();
   MX_USART6_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   MFRC522_Init();
   HAL_UART_Transmit(&huart2, (uchar*) "\n\rSerial Connected...\n\r", 23, 5000);
@@ -288,60 +294,14 @@ int main(void)
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-//  HAL_UART_Receive_IT(&huart6, (uint8_t*)receivedDataFromServer, 8);
-//	HAL_TIM_Base_Start_IT(&htim3);
+
 
 	while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-		/************************** Working with ESP8266 - BEGIN **************************/
-//		HAL_UART_Transmit(&huart6, "k", 1, HAL_MAX_DELAY);
-//
-//		HAL_UART_Receive(&huart6, uartReceivedData, 1, 1000000);
-//
-//		HAL_UART_Transmit(&huart2, uartReceivedData , 1, HAL_MAX_DELAY);
-//
-//		HAL_Delay(1000);
 
-		/************************** Working with ESP8266 - END **************************/
-
-
-
-
-		/************************** Working with RFID - BEGIN **************************/
-		/*________________1. READ ALL_____________________*/
-//		ScanCardAndreadAllData();
-//		HAL_Delay(1000);
-
-		/*________________2. READ ONE_____________________*/
-//		uchar readData[16];
-//		if( ScanCardAndGetDataFromBlock(0, readData, keyA) == MI_OK){
-//			for(int i = 0; i<16; i++){
-//				wareHouse_1.idOfScannedCard[i] = readData[i];
-//				uchar* temp[2];
-//				sprintf(temp, "%02x ", readData[i]);
-//				HAL_UART_Transmit(&huart2, temp, 3, HAL_MAX_DELAY);
-//			}
-//			HAL_UART_Transmit(&huart2, "\n\r", 2, HAL_MAX_DELAY);
-//
-//			sendDataToServer(&wareHouse_1, CardID_DATA);			// to ESP8266
-//			HAL_Delay(1000);
-//		}
-
-		/*________________3. WRITE ONE_____________________*/
-//		uchar dataToLoad[16]={0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,};
-//		if(ScanCardAndLoadDataToBlock(2, dataToLoad, keyA) == MI_OK){
-//			HAL_UART_Transmit(&huart2, "Data is Loaded Successfully!", strlen("Data is Loaded Successfully!"), HAL_MAX_DELAY);
-//		}
-
-		/*________________4. KEY CHANGING_____________________*/
-//		if (ScanCardAndLoadKeyToSector(15, KEY_TYPE_A, keyA_new, keyA) == MI_OK){
-//			HAL_UART_Transmit(&huart2, "Key is Loaded Successfully!", strlen("Key is Loaded Successfully!"), HAL_MAX_DELAY);
-//		}
-
-		/************************** Working with RFID - END **************************/
 	}
   /* USER CODE END 3 */
 }
@@ -420,6 +380,39 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -600,6 +593,17 @@ void scanCardIdHandle(uint8_t wareHouseId){
 				}
 		}
 		break;
+	case 2:
+		// Send Cmd to warehouse2 (stm32 slave) to update value of warehouse2
+		if(1){
+			uint8_t cmdToSend[8];
+			cmdToSend[0] = SCAN_CARDID;
+			HAL_UART_Transmit(&huart1, cmdToSend, 8, HAL_MAX_DELAY);
+			HAL_UART_Receive(&huart1, wareHouse_2.idOfScannedCard, 16, HAL_MAX_DELAY);
+
+			osMessageQueuePut(cardID_QueueHandle, &wareHouse_2, 0U, osWaitForever);
+		}
+		break;
 	default:
 		break;
 	}
@@ -652,6 +656,10 @@ void CmdParsing_Task(void *argument)
 	case TOGGLE_LED:
 		toggleLEDHanlde(receivedDataFromServer[1], receivedDataFromServer[2], receivedDataFromServer[3]);
 		break;
+	case SENSOR_MEASURING:
+			//dosomething
+		sensorMeasuringIsEnable = receivedDataFromServer[7];
+		break;
 	}
 
     osDelay(1);
@@ -672,7 +680,7 @@ void ToggleLed_Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	  osDelay(1);
   }
   /* USER CODE END ToggleLed_Task */
 }
@@ -721,11 +729,20 @@ void SensorMeasuring_Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	wareHouse_1.humidity = rand()%2 + 95;
-	wareHouse_1.temperature = rand()%3 + 22;
-	osMessageQueuePut(sensorData_QueueHandle, &wareHouse_1, NULL, osWaitForever);
-    osDelay(1000);
+	if(sensorMeasuringIsEnable){
+		wareHouse_1.humidity = rand()%2 + 95;
+		wareHouse_1.temperature = rand()%3 + 22;
+		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_1, NULL, osWaitForever);
+		osDelay(1000);
 
+
+		wareHouse_2.humidity = rand()%5 + 90;
+		wareHouse_2.temperature = rand()%10 + 22;
+		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_2, NULL, osWaitForever);
+		osDelay(1000);
+	}
+
+	osDelay(1);
     //	osEventFlagsSet(scanCardAvailableHandle, 0x00000001U);		// this is used to test scan
   }
   /* USER CODE END SensorMeasuring_Task */
