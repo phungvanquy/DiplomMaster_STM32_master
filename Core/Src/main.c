@@ -26,6 +26,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "MFRC522.h"
+#include "dht11.h"
 
 /* USER CODE END Includes */
 
@@ -55,6 +56,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi3;
+
+TIM_HandleTypeDef htim10;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -143,6 +146,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM10_Init(void);
 void CmdParsing_Task(void *argument);
 void ToggleLed_Task(void *argument);
 void ScanCard_Task(void *argument);
@@ -176,9 +180,9 @@ volatile uint8_t receivedDataFromServer[8]={0};
 
 volatile uint8_t sensorMeasuringIsEnable = 1;
 
-
-
 volatile uint8_t cmdToSend[8]={0}; 		// this is used for send CMD to Slave
+
+volatile DHT_DataTypeDef DHT_Data;	// Data to store temperature and humidity
 
 //**** RTOS object ****
 osMutexId_t mutex_id;
@@ -221,6 +225,7 @@ int main(void)
   MX_SPI3_Init();
   MX_USART6_UART_Init();
   MX_USART1_UART_Init();
+  MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
   MFRC522_Init();
   HAL_UART_Transmit(&huart2, (uchar*) "\n\rSerial Connected...\n\r", 23, 5000);
@@ -330,7 +335,12 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 50;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -339,12 +349,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -385,6 +395,37 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM10 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM10_Init(void)
+{
+
+  /* USER CODE BEGIN TIM10_Init 0 */
+
+  /* USER CODE END TIM10_Init 0 */
+
+  /* USER CODE BEGIN TIM10_Init 1 */
+
+  /* USER CODE END TIM10_Init 1 */
+  htim10.Instance = TIM10;
+  htim10.Init.Prescaler = 50-1;
+  htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim10.Init.Period = 65535;
+  htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim10) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM10_Init 2 */
+
+  /* USER CODE END TIM10_Init 2 */
 
 }
 
@@ -527,6 +568,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pins : SPI_SS3_Pin SPI_SS2_Pin SPI3_SS_Pin LED_YELLOW_Pin
                            LED_GREEN_Pin */
   GPIO_InitStruct.Pin = SPI_SS3_Pin|SPI_SS2_Pin|SPI3_SS_Pin|LED_YELLOW_Pin
@@ -542,6 +589,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_RED_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 
@@ -756,11 +809,16 @@ void SensorMeasuring_Task(void *argument)
 {
   /* USER CODE BEGIN SensorMeasuring_Task */
   /* Infinite loop */
+	HAL_TIM_Base_Start(&htim10);
   for(;;)
   {
 	  if(sensorMeasuringIsEnable){
-		wareHouse_1.humidity = rand()%2 + 95;
-		wareHouse_1.temperature = rand()%3 + 22;
+		DHT11_GetData(&DHT_Data);
+		wareHouse_1.humidity = DHT_Data.Humidity;
+		wareHouse_1.temperature = DHT_Data.Temperature;
+
+//		wareHouse_2.humidity = rand()%5 + 90;
+//		wareHouse_2.temperature = rand()%10 + 22;
 		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_1, NULL, osWaitForever);
 	  }
 
@@ -770,9 +828,8 @@ void SensorMeasuring_Task(void *argument)
 		//Send Cmd to warehouse2 to get humidity and temperature
 		cmdToSend[0] = SENSOR_MEASURING;
 		HAL_UART_Transmit(&huart1, cmdToSend, 8, HAL_MAX_DELAY);
-
-		HAL_UART_Receive(&huart1, &wareHouse_2.humidity, 1, 500);
-		HAL_UART_Receive(&huart1, &wareHouse_2.temperature, 1, 500);
+		HAL_UART_Receive(&huart1, &wareHouse_2.humidity, 1, 1000);
+		HAL_UART_Receive(&huart1, &wareHouse_2.temperature, 1, 1000);
 
 
 //		wareHouse_2.humidity = rand()%5 + 90;

@@ -1,0 +1,8 @@
+dht11.c:14:6:delay_us	16	static
+dht11.c:21:6:delay_ms	24	static
+dht11.c:34:6:Set_Pin_Output	40	static
+dht11.c:44:6:Set_Pin_Input	40	static
+dht11.c:54:6:DHT11_Start	8	static
+dht11.c:64:9:DHT11_Check_Response	16	static
+dht11.c:85:9:DHT11_Read	16	static
+dht11.c:105:6:DHT11_GetData	24	static
