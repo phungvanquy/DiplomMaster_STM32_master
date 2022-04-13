@@ -88,21 +88,21 @@ const osThreadAttr_t ScanCard_attributes = {
 osThreadId_t SensorMeasuringHandle;
 const osThreadAttr_t SensorMeasuring_attributes = {
   .name = "SensorMeasuring",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for SendCardID */
 osThreadId_t SendCardIDHandle;
 const osThreadAttr_t SendCardID_attributes = {
   .name = "SendCardID",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for SendSensorData */
 osThreadId_t SendSensorDataHandle;
 const osThreadAttr_t SendSensorData_attributes = {
   .name = "SendSensorData",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for cardID_Queue */
@@ -338,7 +338,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 50;
+  RCC_OscInitStruct.PLL.PLLN = 84;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -354,7 +354,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -414,7 +414,7 @@ static void MX_TIM10_Init(void)
 
   /* USER CODE END TIM10_Init 1 */
   htim10.Instance = TIM10;
-  htim10.Init.Prescaler = 50-1;
+  htim10.Init.Prescaler = 84-1;
   htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim10.Init.Period = 65535;
   htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -816,9 +816,6 @@ void SensorMeasuring_Task(void *argument)
 		DHT11_GetData(&DHT_Data);
 		wareHouse_1.humidity = DHT_Data.Humidity;
 		wareHouse_1.temperature = DHT_Data.Temperature;
-
-//		wareHouse_2.humidity = rand()%5 + 90;
-//		wareHouse_2.temperature = rand()%10 + 22;
 		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_1, NULL, osWaitForever);
 	  }
 
@@ -830,10 +827,6 @@ void SensorMeasuring_Task(void *argument)
 		HAL_UART_Transmit(&huart1, cmdToSend, 8, HAL_MAX_DELAY);
 		HAL_UART_Receive(&huart1, &wareHouse_2.humidity, 1, 1000);
 		HAL_UART_Receive(&huart1, &wareHouse_2.temperature, 1, 1000);
-
-
-//		wareHouse_2.humidity = rand()%5 + 90;
-//		wareHouse_2.temperature = rand()%10 + 22;
 		osMessageQueuePut(sensorData_QueueHandle, &wareHouse_2, NULL, osWaitForever);
 	  }
 	  osDelay(1000);
