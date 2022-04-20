@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include "MFRC522.h"
 #include "dht11.h"
+#include "servo.h"
 
 /* USER CODE END Includes */
 
@@ -57,6 +58,7 @@
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi3;
 
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim10;
 
 UART_HandleTypeDef huart1;
@@ -105,6 +107,13 @@ const osThreadAttr_t SendSensorData_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for ServoControl */
+osThreadId_t ServoControlHandle;
+const osThreadAttr_t ServoControl_attributes = {
+  .name = "ServoControl",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for cardID_Queue */
 osMessageQueueId_t cardID_QueueHandle;
 const osMessageQueueAttr_t cardID_Queue_attributes = {
@@ -135,6 +144,11 @@ osEventFlagsId_t parsingCMDAvailableHandle;
 const osEventFlagsAttr_t parsingCMDAvailable_attributes = {
   .name = "parsingCMDAvailable"
 };
+/* Definitions for servoControlIsAvailable */
+osEventFlagsId_t servoControlIsAvailableHandle;
+const osEventFlagsAttr_t servoControlIsAvailable_attributes = {
+  .name = "servoControlIsAvailable"
+};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -147,12 +161,14 @@ static void MX_SPI3_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM10_Init(void);
+static void MX_TIM3_Init(void);
 void CmdParsing_Task(void *argument);
 void ToggleLed_Task(void *argument);
 void ScanCard_Task(void *argument);
 void SensorMeasuring_Task(void *argument);
 void SendCardID_Task(void *argument);
 void SendSensorData_Task(void *argument);
+void ServoControl_task(void *argument);
 
 /* USER CODE BEGIN PFP */
 void sendDataToServer(volatile WareHouse_t* wareHouse, uint8_t typeOfData);
@@ -226,6 +242,7 @@ int main(void)
   MX_USART6_UART_Init();
   MX_USART1_UART_Init();
   MX_TIM10_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   MFRC522_Init();
   HAL_UART_Transmit(&huart2, (uchar*) "\n\rSerial Connected...\n\r", 23, 5000);
@@ -284,6 +301,9 @@ int main(void)
   /* creation of SendSensorData */
   SendSensorDataHandle = osThreadNew(SendSensorData_Task, NULL, &SendSensorData_attributes);
 
+  /* creation of ServoControl */
+  ServoControlHandle = osThreadNew(ServoControl_task, NULL, &ServoControl_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -293,6 +313,9 @@ int main(void)
 
   /* creation of parsingCMDAvailable */
   parsingCMDAvailableHandle = osEventFlagsNew(&parsingCMDAvailable_attributes);
+
+  /* creation of servoControlIsAvailable */
+  servoControlIsAvailableHandle = osEventFlagsNew(&servoControlIsAvailable_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
@@ -395,6 +418,65 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 83;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 19999;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -694,6 +776,7 @@ void toggleLEDHanlde(uint8_t wareHouseId, uint8_t ledId, uint8_t state){
 				HAL_GPIO_WritePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin, state);
 			}else if(ledId == 3){
 				HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, state);
+				osEventFlagsSet(servoControlIsAvailableHandle, 0x00000001U);
 			}
 
 			break;
@@ -897,6 +980,35 @@ void SendSensorData_Task(void *argument)
     osDelay(1);
   }
   /* USER CODE END SendSensorData_Task */
+}
+
+/* USER CODE BEGIN Header_ServoControl_task */
+/**
+* @brief Function implementing the ServoControl thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_ServoControl_task */
+void ServoControl_task(void *argument)
+{
+  /* USER CODE BEGIN ServoControl_task */
+	Servo_Write(&htim3, TIM_CHANNEL_1, 90);
+	int isOpen = 0;
+  /* Infinite loop */
+  for(;;)
+  {
+	osEventFlagsWait(servoControlIsAvailableHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
+	if(isOpen == 0){
+		Servo_Write(&htim3, TIM_CHANNEL_1, 0);
+		isOpen = 1;
+	}else {
+		Servo_Write(&htim3, TIM_CHANNEL_1, 90);
+		isOpen = 0;
+	}
+
+	osDelay(1);
+  }
+  /* USER CODE END ServoControl_task */
 }
 
 /**
